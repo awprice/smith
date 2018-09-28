@@ -37,7 +37,7 @@ type Controller struct {
 	BundleClient smithClient_v1.BundlesGetter
 	BundleStore  BundleStore
 	SmartClient  SmartClient
-	Rc           ReadyChecker
+	Rc           StatusChecker
 	Store        Store
 	SpecCheck    SpecCheck
 	WorkQueue    ctrl.WorkQueueProducer

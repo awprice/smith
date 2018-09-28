@@ -3,7 +3,7 @@ package types
 import (
 	"time"
 
-	"github.com/atlassian/smith/pkg/readychecker"
+	"github.com/atlassian/smith/pkg/statuschecker"
 	"github.com/atlassian/smith/pkg/util"
 
 	sc_v1b1 "github.com/kubernetes-incubator/service-catalog/pkg/apis/servicecatalog/v1beta1"
@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	MainKnownTypes = map[schema.GroupKind]readychecker.IsObjectReady{
+	MainKnownTypes = map[schema.GroupKind]statuschecker.ObjectStatusChecker{
 		{Group: core_v1.GroupName, Kind: "ConfigMap"}:      alwaysReady,
 		{Group: core_v1.GroupName, Kind: "Secret"}:         alwaysReady,
 		{Group: core_v1.GroupName, Kind: "Service"}:        alwaysReady,
@@ -34,7 +34,7 @@ var (
 
 		{Group: autoscaling_v2b1.GroupName, Kind: "HorizontalPodAutoscaler"}: isHorizontalPodAutoscalerReady,
 	}
-	ServiceCatalogKnownTypes = map[schema.GroupKind]readychecker.IsObjectReady{
+	ServiceCatalogKnownTypes = map[schema.GroupKind]statuschecker.ObjectStatusChecker{
 		{Group: sc_v1b1.GroupName, Kind: "ServiceBinding"}:  isScServiceBindingReady,
 		{Group: sc_v1b1.GroupName, Kind: "ServiceInstance"}: isScServiceInstanceReady,
 	}

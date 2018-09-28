@@ -4,6 +4,7 @@ import (
 	ctrlLogz "github.com/atlassian/ctrl/logz"
 	smith_v1 "github.com/atlassian/smith/pkg/apis/smith/v1"
 	"github.com/atlassian/smith/pkg/plugin"
+	"github.com/atlassian/smith/pkg/statuschecker"
 	"github.com/atlassian/smith/pkg/store"
 	"github.com/atlassian/smith/pkg/util"
 	sc_v1b1 "github.com/kubernetes-incubator/service-catalog/pkg/apis/servicecatalog/v1beta1"
@@ -66,7 +67,7 @@ func (ri *resourceInfo) fetchError() (bool, error) {
 type resourceSyncTask struct {
 	logger             *zap.Logger
 	smartClient        SmartClient
-	rc                 ReadyChecker
+	checker            statuschecker.Interface
 	store              Store
 	specCheck          SpecCheck
 	bundle             *smith_v1.Bundle
@@ -164,8 +165,8 @@ func (st *resourceSyncTask) processResource(res *smith_v1.Resource) resourceInfo
 	}
 
 	// Check if resource is ready
-	var ready bool
-	if ready, retriable, err = st.rc.IsReady(resUpdated); err != nil {
+	ready, retriable, err := st.checker.CheckStatus(resUpdated)
+	if err != nil {
 		return resourceInfo{
 			actual: resUpdated,
 			status: resourceStatusError{
@@ -173,7 +174,8 @@ func (st *resourceSyncTask) processResource(res *smith_v1.Resource) resourceInfo
 				isRetriableError: retriable,
 			},
 		}
-	} else if !ready {
+	}
+	if !ready {
 		return resourceInfo{
 			actual: resUpdated,
 			status: resourceStatusInProgress{},
@@ -241,7 +243,9 @@ func (st *resourceSyncTask) getActualObject(res *smith_v1.Resource) (runtime.Obj
 	} else if res.Spec.Plugin != nil {
 		pluginContainer, ok := st.pluginContainers[res.Spec.Plugin.Name]
 		if !ok {
-			return nil, errors.Errorf("no such plugin %q", res.Spec.Plugin.Name)
+			return nil, resourceStatusError{
+				err: errors.Errorf("no such plugin %q", res.Spec.Plugin.Name),
+			}
 		}
 		gvk = pluginContainer.Plugin.Describe().GVK
 		name = res.Spec.Plugin.ObjectName

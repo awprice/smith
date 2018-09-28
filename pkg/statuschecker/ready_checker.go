@@ -1,4 +1,4 @@
-package readychecker
+package statuschecker
 
 import (
 	"github.com/atlassian/smith"
@@ -11,38 +11,45 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// IsObjectReady checks if an object is Ready.
-// Each function is responsible for handling different versions of objects itself.
-type IsObjectReady func(runtime.Object) (isReady, retriableError bool, e error)
+type ObjectStatusResult struct {
+}
 
-// CrdStore gets a CRD definition for a Group and Kind of the resource (CRD instance).
+// ObjectStatusChecker checks object's status.
+// Function is responsible for handling different versions of objects by itself.
+type ObjectStatusChecker func(runtime.Object) (ObjectStatusResult, error)
+
+// CRDStore gets a CRD definition for a Group and Kind of the resource (CRD instance).
 // Returns nil if CRD definition was not found.
-type CrdStore interface {
+type CRDStore interface {
 	Get(resource schema.GroupKind) (*apiext_v1b1.CustomResourceDefinition, error)
 }
 
-type ReadyChecker struct {
-	Store      CrdStore
-	KnownTypes map[schema.GroupKind]IsObjectReady
+type Interface interface {
+	CheckStatus(*unstructured.Unstructured) (isReady, retriableError bool, e error)
 }
 
-func New(store CrdStore, kts ...map[schema.GroupKind]IsObjectReady) *ReadyChecker {
-	kt := make(map[schema.GroupKind]IsObjectReady)
+type Checker struct {
+	Store      CRDStore
+	KnownTypes map[schema.GroupKind]ObjectStatusChecker
+}
+
+func New(store CRDStore, kts ...map[schema.GroupKind]ObjectStatusChecker) (*Checker, error) {
+	kt := make(map[schema.GroupKind]ObjectStatusChecker)
 	for _, knownTypes := range kts {
 		for knownGK, f := range knownTypes {
 			if kt[knownGK] != nil {
-				panic(errors.Errorf("GK specified more than once: %s", knownGK))
+				return nil, errors.Errorf("GroupKind specified more than once: %s", knownGK)
 			}
 			kt[knownGK] = f
 		}
 	}
-	return &ReadyChecker{
+	return &Checker{
 		Store:      store,
 		KnownTypes: kt,
-	}
+	}, nil
 }
 
-func (rc *ReadyChecker) IsReady(obj *unstructured.Unstructured) (isReady, retriableError bool, e error) {
+func (c *Checker) CheckStatus(obj *unstructured.Unstructured) (isReady, retriableError bool, e error) {
 	gvk := obj.GroupVersionKind()
 	gk := gvk.GroupKind()
 
@@ -51,27 +58,27 @@ func (rc *ReadyChecker) IsReady(obj *unstructured.Unstructured) (isReady, retria
 	}
 
 	// 1. Check if it is a known built-in resource
-	if isObjectReady, ok := rc.KnownTypes[gk]; ok {
+	if isObjectReady, ok := c.KnownTypes[gk]; ok {
 		return isObjectReady(obj)
 	}
 
 	// 2. Check if it is a CRD with path/value annotation
-	ready, retriable, err := rc.checkPathValue(gk, obj)
+	ready, retriable, err := c.checkPathValue(gk, obj)
 	if err != nil || ready {
 		return ready, retriable, err
 	}
 
 	// 3. Check if it is a CRD with Kind/GroupVersion annotation
-	return rc.checkForInstance(gk, obj)
+	return c.checkForInstance(gk, obj)
 }
 
-func (rc *ReadyChecker) checkForInstance(gk schema.GroupKind, obj *unstructured.Unstructured) (isReady, retriableError bool, e error) {
+func (c *Checker) checkForInstance(gk schema.GroupKind, obj *unstructured.Unstructured) (isReady, retriableError bool, e error) {
 	// TODO Check if it is a CRD with Kind/GroupVersion annotation
 	return false, false, nil
 }
 
-func (rc *ReadyChecker) checkPathValue(gk schema.GroupKind, obj *unstructured.Unstructured) (isReady, retriableError bool, e error) {
-	crd, err := rc.Store.Get(gk)
+func (c *Checker) checkPathValue(gk schema.GroupKind, obj *unstructured.Unstructured) (isReady, retriableError bool, e error) {
+	crd, err := c.Store.Get(gk)
 	if err != nil {
 		return false, true, err
 	}
