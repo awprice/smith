@@ -146,8 +146,13 @@ func isScServiceInstanceReady(obj runtime.Object) (isReady, retriableError bool,
 		return false, false, err
 	}
 	readyCond := getServiceInstanceCondition(&instance, sc_v1b1.ServiceInstanceConditionReady)
-	if readyCond != nil && readyCond.Status == sc_v1b1.ConditionTrue {
-		return true, false, nil
+	if readyCond != nil {
+		if isScInstanceError(readyCond.Reason) {
+			return false, true, errors.New(readyCond.Message)
+		}
+		if readyCond.Status == sc_v1b1.ConditionTrue {
+			return true, false, nil
+		}
 	}
 	failedCond := getServiceInstanceCondition(&instance, sc_v1b1.ServiceInstanceConditionFailed)
 	if failedCond != nil && failedCond.Status == sc_v1b1.ConditionTrue {
@@ -173,4 +178,33 @@ func getServiceBindingCondition(instance *sc_v1b1.ServiceBinding, conditionType 
 		}
 	}
 	return nil
+}
+
+func isScInstanceError(reason string) bool {
+	// Service Catalog does not appear to have a public list of error reasons
+	// https://github.com/kubernetes-incubator/service-catalog/blob/b1a1c4568192b429895182454e90a6cc7394a3ab/pkg/controller/controller_instance.go#L56
+	scErrorReasons := []string{
+		"ErrorWithParameters",
+		"ProvisionCallFailed",
+		"ErrorCallingProvision",
+		"UpdateInstanceCallFailed",
+		"ErrorCallingUpdateInstance",
+		"DeprovisionCallFailed",
+		"DeprovisionBlockedByExistingCredentials",
+		"ErrorPollingLastOperation",
+		"ErrorAsyncOperationInProgress",
+		"ReferencesNonexistentServiceClass",
+		"ReferencesNonexistentServicePlan",
+		"ReferencesNonexistentBroker",
+		"ReferencesDeletedServicePlan",
+		"ErrorFindingNamespaceForInstance",
+		"OrphanMitigationFailed",
+		"InvalidDeprovisionStatus",
+	}
+	for _, value := range scErrorReasons {
+		if reason == value {
+			return true
+		}
+	}
+	return false
 }
